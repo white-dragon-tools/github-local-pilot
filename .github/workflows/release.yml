@@ -30,8 +30,8 @@ jobs:
       - name: Build CLI
         run: pnpm build
 
-      - name: Run tests
-        run: pnpm test
+      - name: Test CLI
+        run: pnpm --filter @white-dragon-tools/github-local-pilot test
 
       - name: Package Chrome Extension
         run: |

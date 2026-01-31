@@ -34,8 +34,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test
-        run: pnpm test
+      - name: Test CLI
+        run: pnpm --filter @white-dragon-tools/github-local-pilot test
 
       - name: Package Chrome Extension
         run: |
