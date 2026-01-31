@@ -70,7 +70,32 @@ export function createUrlHandler(): Command {
     console.log('');
 
     const repoBaseDir = path.join(workspace, parsed.org, parsed.repo);
-    const targetDir = getTargetDirectory(workspace, parsed, customBranch);
+
+    // Find or create main repo first to get default branch
+    let mainRepoDir = findMainRepo(repoBaseDir);
+    let defaultBranch = 'main';
+
+    if (!mainRepoDir) {
+      console.log(chalk.yellow('  Cloning repository...'));
+      const tempMainDir = path.join(repoBaseDir, '__temp_clone__');
+      const cloneResult = cloneRepo(parsed.org, parsed.repo, tempMainDir);
+      if (!cloneResult.success) {
+        console.log(chalk.red(`  Failed to clone: ${cloneResult.error}`));
+        process.exit(1);
+      }
+      // Get default branch and rename directory
+      defaultBranch = getDefaultBranch(tempMainDir);
+      const actualMainDir = path.join(repoBaseDir, defaultBranch);
+      fs.renameSync(tempMainDir, actualMainDir);
+      mainRepoDir = actualMainDir;
+      console.log(chalk.green('  ✓ Repository cloned'));
+    } else {
+      defaultBranch = getDefaultBranch(mainRepoDir);
+      console.log(chalk.gray('  Fetching latest changes...'));
+      fetchRepo(mainRepoDir);
+    }
+
+    const targetDir = getTargetDirectory(workspace, parsed, customBranch, defaultBranch);
 
     // Check if target already exists
     if (fs.existsSync(targetDir) && isGitRepo(targetDir)) {
@@ -80,24 +105,6 @@ export function createUrlHandler(): Command {
         openInIde(targetDir, wsConfig.autoOpenIde);
       }
       return;
-    }
-
-    // Find or create main repo
-    let mainRepoDir = findMainRepo(repoBaseDir);
-
-    if (!mainRepoDir) {
-      console.log(chalk.yellow('  Cloning repository...'));
-      const mainDir = path.join(repoBaseDir, 'main');
-      const cloneResult = cloneRepo(parsed.org, parsed.repo, mainDir);
-      if (!cloneResult.success) {
-        console.log(chalk.red(`  Failed to clone: ${cloneResult.error}`));
-        process.exit(1);
-      }
-      mainRepoDir = mainDir;
-      console.log(chalk.green('  ✓ Repository cloned'));
-    } else {
-      console.log(chalk.gray('  Fetching latest changes...'));
-      fetchRepo(mainRepoDir);
     }
 
     // Handle based on type

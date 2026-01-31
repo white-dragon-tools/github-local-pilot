@@ -22,17 +22,7 @@
 ### CLI 安装
 
 ```bash
-# 克隆仓库
-git clone https://github.com/your-org/github-local-pilot.git
-cd github-local-pilot
-
-# 安装依赖并构建
-pnpm install
-pnpm build
-
-# 全局链接
-cd packages/cli
-npm link
+npm install @white-dragon-tools/github-local-pilot -g
 ```
 
 ### Chrome 扩展安装

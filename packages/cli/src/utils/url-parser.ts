@@ -72,13 +72,14 @@ export function parseProtocolUrl(url: string): ParsedUrl | null {
 export function getTargetDirectory(
   workspace: string,
   parsed: ParsedUrl,
-  customBranch?: string
+  customBranch?: string,
+  defaultBranch?: string
 ): string {
   const base = `${workspace}/${parsed.org}/${parsed.repo}`;
 
   switch (parsed.type) {
     case 'repo':
-      return `${base}/main`;
+      return `${base}/${defaultBranch || 'main'}`;
     case 'branch':
       // Replace slashes in branch name with dashes for directory name
       const safeBranchName = parsed.identifier!.replace(/\//g, '-');
