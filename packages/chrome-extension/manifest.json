@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "GitHub Local Pilot",
+  "version": "1.0.0",
+  "description": "One-click open GitHub Issue/PR/Branch in local workspace",
+  "permissions": [],
+  "host_permissions": [
+    "https://github.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*/*",
+        "https://github.com/*/*/issues/*",
+        "https://github.com/*/*/pull/*",
+        "https://github.com/*/*/tree/*"
+      ],
+      "js": ["src/content.js"],
+      "css": ["src/styles.css"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  }
+}

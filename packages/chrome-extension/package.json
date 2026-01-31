@@ -1,0 +1,14 @@
+{
+  "name": "@white-dragon-tools/github-local-pilot-extension",
+  "version": "1.0.0",
+  "description": "GitHub Local Pilot Chrome Extension",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "puppeteer": "^22.0.0",
+    "vitest": "^1.2.0"
+  }
+}

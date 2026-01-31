@@ -1,0 +1,66 @@
+.github-local-pilot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 8px;
+  color: var(--color-btn-text);
+  background-color: var(--color-btn-bg);
+  border: 1px solid var(--color-btn-border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  transition: 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+}
+
+.github-local-pilot-btn:hover {
+  background-color: var(--color-btn-hover-bg);
+  border-color: var(--color-btn-hover-border);
+}
+
+.github-local-pilot-btn:active {
+  background-color: var(--color-btn-active-bg);
+}
+
+.github-local-pilot-btn svg {
+  fill: currentColor;
+}
+
+/* Simple button (no border, just icon) */
+.github-local-pilot-btn-simple {
+  background: none;
+  border: none;
+  padding: 4px;
+  margin-right: 0;
+  color: var(--fgColor-muted, var(--color-fg-muted));
+}
+
+.github-local-pilot-btn-simple:hover {
+  background: none;
+  border: none;
+  color: var(--fgColor-accent, var(--color-accent-fg));
+}
+
+.github-local-pilot-btn-simple:active {
+  background: none;
+}
+
+/* List icon for issue/PR lists */
+.github-local-pilot-list-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--fgColor-muted, var(--color-fg-muted));
+  cursor: pointer;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.github-local-pilot-list-icon:hover {
+  color: var(--fgColor-accent, var(--color-accent-fg));
+}
+
+.github-local-pilot-list-icon svg {
+  fill: currentColor;
+}
