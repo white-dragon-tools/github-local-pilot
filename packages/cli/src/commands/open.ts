@@ -10,6 +10,7 @@ import {
   findMainRepo,
   createWorktree,
   checkoutPR,
+  getPRBranchName,
   remoteBranchExists,
   localBranchExists,
   getDefaultBranch,
@@ -18,7 +19,7 @@ import {
 } from '../utils/git-ops.js';
 import { detectAndRunInit } from '../utils/auto-init.js';
 import { loadWorkspaceConfig, applyMappings } from '../utils/mappings.js';
-import { writeMetadata, type GhlpMetadata } from '../utils/metadata.js';
+import { writeMetadata, inferOriginType, type GhlpMetadata } from '../utils/metadata.js';
 
 export function createUrlHandler(): Command {
   const cmd = new Command('open');
@@ -47,7 +48,14 @@ export function createUrlHandler(): Command {
     let customBranch: string | undefined;
     
     const result = applyMappings(inputUrl, wsConfig.mappings);
-    if (result.url !== inputUrl) {
+    const isMapped = result.url !== inputUrl;
+    
+    // Determine originType: from mapping config, or infer from original URL
+    const originType = isMapped 
+      ? (result.originType || 'external')
+      : inferOriginType(inputUrl);
+    
+    if (isMapped) {
       console.log(chalk.gray(`  Mapped: ${inputUrl}`));
       console.log(chalk.gray(`       → ${result.url}`));
       url = result.url;
@@ -62,7 +70,8 @@ export function createUrlHandler(): Command {
 
     console.log(chalk.cyan(`\n📂 Opening ${parsed.type}: ${parsed.org}/${parsed.repo}`));
     if (parsed.identifier) {
-      console.log(chalk.gray(`   ${parsed.type === 'branch' ? 'Branch' : parsed.type === 'pr' ? 'PR' : 'Issue'}: ${parsed.identifier}`));
+      const typeLabel = parsed.type === 'branch' ? 'Branch' : parsed.type === 'pr' ? 'PR' : parsed.type === 'tag' ? 'Tag' : 'Issue';
+      console.log(chalk.gray(`   ${typeLabel}: ${parsed.identifier}`));
     }
     if (customBranch) {
       console.log(chalk.gray(`   Custom branch: ${customBranch}`));
@@ -114,8 +123,9 @@ export function createUrlHandler(): Command {
         detectAndRunInit(mainRepoDir);
         writeMetadata(mainRepoDir, {
           originalUrl: inputUrl,
-          mapped: url !== inputUrl,
-          mappedUrl: url !== inputUrl ? url : undefined,
+          originType,
+          mapped: isMapped,
+          mappedUrl: isMapped ? url : undefined,
           type: 'repo',
           org: parsed.org,
           repo: parsed.repo,
@@ -143,8 +153,9 @@ export function createUrlHandler(): Command {
           detectAndRunInit(targetDir);
           writeMetadata(targetDir, {
             originalUrl: inputUrl,
-            mapped: url !== inputUrl,
-            mappedUrl: url !== inputUrl ? url : undefined,
+            originType,
+            mapped: isMapped,
+            mappedUrl: isMapped ? url : undefined,
             type: 'branch',
             org: parsed.org,
             repo: parsed.repo,
@@ -161,10 +172,28 @@ export function createUrlHandler(): Command {
       }
 
       case 'pr': {
-        console.log(chalk.yellow(`  Creating worktree for PR #${parsed.identifier}`));
+        // Get PR branch name first
+        console.log(chalk.yellow(`  Getting PR #${parsed.identifier} info...`));
+        const prBranchName = getPRBranchName(parsed.org, parsed.repo, parsed.identifier!);
+        
+        // Recalculate target directory with PR branch name
+        const prTargetDir = prBranchName 
+          ? getTargetDirectory(workspace, parsed, prBranchName, defaultBranch)
+          : targetDir;
+        
+        // Check if target already exists (with new path)
+        if (fs.existsSync(prTargetDir) && isGitRepo(prTargetDir)) {
+          console.log(chalk.green(`✓ Directory already exists: ${prTargetDir}`));
+          if (wsConfig.autoOpenIde) {
+            openInIde(prTargetDir, wsConfig.autoOpenIde);
+          }
+          return;
+        }
+        
+        console.log(chalk.yellow(`  Creating worktree for PR #${parsed.identifier}${prBranchName ? ` (${prBranchName})` : ''}...`));
         
         // Create a detached worktree first, then checkout PR
-        const result = createWorktree(mainRepoDir, targetDir, 'HEAD', false);
+        const result = createWorktree(mainRepoDir, prTargetDir, 'HEAD', false);
         if (!result.success) {
           console.log(chalk.red(`  Failed to create worktree: ${result.error}`));
           process.exit(1);
@@ -172,26 +201,27 @@ export function createUrlHandler(): Command {
 
         // Checkout PR in the worktree
         console.log(chalk.yellow(`  Checking out PR #${parsed.identifier}...`));
-        const prResult = checkoutPR(targetDir, parsed.identifier!);
+        const prResult = checkoutPR(prTargetDir, parsed.identifier!);
         if (!prResult.success) {
           console.log(chalk.red(`  Failed to checkout PR: ${prResult.error}`));
           process.exit(1);
         }
-        detectAndRunInit(targetDir);
-        writeMetadata(targetDir, {
+        detectAndRunInit(prTargetDir);
+        writeMetadata(prTargetDir, {
           originalUrl: inputUrl,
-          mapped: url !== inputUrl,
-          mappedUrl: url !== inputUrl ? url : undefined,
+          originType,
+          mapped: isMapped,
+          mappedUrl: isMapped ? url : undefined,
           type: 'pr',
           org: parsed.org,
           repo: parsed.repo,
           identifier: parsed.identifier,
-          branch: `pr-${parsed.identifier}`,
+          branch: prBranchName || `pr-${parsed.identifier}`,
           createdAt: new Date().toISOString(),
         });
-        console.log(chalk.green(`✓ Ready: ${targetDir}`));
+        console.log(chalk.green(`✓ Ready: ${prTargetDir}`));
         if (wsConfig.autoOpenIde) {
-          openInIde(targetDir, wsConfig.autoOpenIde);
+          openInIde(prTargetDir, wsConfig.autoOpenIde);
         }
         break;
       }
@@ -237,13 +267,43 @@ export function createUrlHandler(): Command {
         detectAndRunInit(targetDir);
         writeMetadata(targetDir, {
           originalUrl: inputUrl,
-          mapped: url !== inputUrl,
-          mappedUrl: url !== inputUrl ? url : undefined,
+          originType,
+          mapped: isMapped,
+          mappedUrl: isMapped ? url : undefined,
           type: 'issue',
           org: parsed.org,
           repo: parsed.repo,
           identifier: parsed.identifier,
           branch: issueBranch,
+          createdAt: new Date().toISOString(),
+        });
+        console.log(chalk.green(`✓ Ready: ${targetDir}`));
+        if (wsConfig.autoOpenIde) {
+          openInIde(targetDir, wsConfig.autoOpenIde);
+        }
+        break;
+      }
+
+      case 'tag': {
+        console.log(chalk.yellow(`  Creating worktree for tag: ${parsed.identifier}`));
+        
+        // Tags are like branches but read-only, checkout the tag
+        const result = createWorktree(mainRepoDir, targetDir, parsed.identifier!, false);
+        if (!result.success) {
+          console.log(chalk.red(`  Failed: ${result.error}`));
+          process.exit(1);
+        }
+        detectAndRunInit(targetDir);
+        writeMetadata(targetDir, {
+          originalUrl: inputUrl,
+          originType,
+          mapped: isMapped,
+          mappedUrl: isMapped ? url : undefined,
+          type: 'tag',
+          org: parsed.org,
+          repo: parsed.repo,
+          identifier: parsed.identifier,
+          branch: parsed.identifier!,
           createdAt: new Date().toISOString(),
         });
         console.log(chalk.green(`✓ Ready: ${targetDir}`));

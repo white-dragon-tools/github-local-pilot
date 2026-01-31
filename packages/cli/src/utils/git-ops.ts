@@ -73,6 +73,9 @@ export function fetchRepo(repoDir: string): GitResult {
 }
 
 export function getDefaultBranch(repoDir: string): string {
+  // First, ensure origin/HEAD is set
+  runCommand('git remote set-head origin --auto', repoDir);
+  
   const result = runCommand(
     'git symbolic-ref refs/remotes/origin/HEAD --short',
     repoDir
@@ -115,6 +118,16 @@ export function checkoutBranch(repoDir: string, branch: string): GitResult {
 
 export function checkoutPR(repoDir: string, prNumber: string): GitResult {
   return runCommand(`gh pr checkout ${prNumber}`, repoDir);
+}
+
+export function getPRBranchName(org: string, repo: string, prNumber: string): string | null {
+  const result = runCommand(
+    `gh pr view ${prNumber} --repo ${org}/${repo} --json headRefName --jq .headRefName`
+  );
+  if (result.success && result.message) {
+    return result.message.trim();
+  }
+  return null;
 }
 
 export function remoteBranchExists(

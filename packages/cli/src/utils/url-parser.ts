@@ -1,4 +1,4 @@
-export type UrlType = 'repo' | 'branch' | 'pr' | 'issue';
+export type UrlType = 'repo' | 'branch' | 'pr' | 'issue' | 'tag';
 
 export interface ParsedUrl {
   org: string;
@@ -66,6 +66,12 @@ export function parseProtocolUrl(url: string): ParsedUrl | null {
     return { org, repo, type: 'issue', identifier: issueNumber };
   }
 
+  // org/repo/releases/tag/v1.0.0 -> treat as tag
+  if (typeSegment === 'releases' && parts[3] === 'tag' && parts.length >= 5) {
+    const tagName = parts.slice(4).join('/');
+    return { org, repo, type: 'tag', identifier: tagName };
+  }
+
   return null;
 }
 
@@ -85,6 +91,11 @@ export function getTargetDirectory(
       const safeBranchName = parsed.identifier!.replace(/\//g, '-');
       return `${base}/${safeBranchName}`;
     case 'pr':
+      // Use custom branch (PR branch name) for directory name if provided
+      if (customBranch) {
+        const safeName = customBranch.replace(/\//g, '-');
+        return `${base}/${safeName}`;
+      }
       return `${base}/pr-${parsed.identifier}`;
     case 'issue':
       // Use custom branch for directory name if provided
@@ -93,5 +104,9 @@ export function getTargetDirectory(
         return `${base}/${safeName}`;
       }
       return `${base}/issue-${parsed.identifier}`;
+    case 'tag':
+      // Tag directory: tag-{name}
+      const safeTagName = parsed.identifier!.replace(/\//g, '-');
+      return `${base}/tag-${safeTagName}`;
   }
 }

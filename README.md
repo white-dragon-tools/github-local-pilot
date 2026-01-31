@@ -4,9 +4,11 @@
 
 ## 功能特性
 
-- **一键跳转**: 在 GitHub Issue/PR/Branch/Repo 页面点击按钮,自动在本地创建对应的 worktree
-- **列表快捷入口**: 在 Issue/PR 列表页面,每行末尾显示快捷图标,直接打开对应项目
-- **Git Worktree 管理**: 每个 Issue/PR/Branch 独立目录,互不干扰
+- **一键跳转**: 在 GitHub Issue/PR/Branch/Repo/Tag 页面点击按钮,自动在本地创建对应的 worktree
+- **列表快捷入口**: 在 Issue/PR/Branch/Tag 列表页面,每行显示快捷图标,直接打开对应项目
+- **Create PR 快捷入口**: 在 Issue 评论中的 "Create PR" 链接后显示图标,快速打开对应分支
+- **Git Worktree 管理**: 每个 Issue/PR/Branch/Tag 独立目录,互不干扰
+- **智能目录命名**: PR 使用分支名称作为目录名,Tag 使用 `tag-{name}` 格式
 - **自动初始化**: 检测项目类型,自动运行 `pnpm i` / `npm i` / `cargo build` 等
 - **URL 映射**: 支持正则表达式重写 URL,适配内部工具链
 - **跨平台**: 支持 Windows / macOS / Linux
@@ -22,6 +24,7 @@
 ### CLI 安装
 
 ```bash
+npm config set @white-dragon-tools:registry https://npm.pkg.github.com
 npm install @white-dragon-tools/github-local-pilot -g
 ```
 
@@ -137,11 +140,17 @@ mappings:
   - from: "https://jira.company.com/browse/PROJ-(\\d+)"
     to: "https://github.com/company/project/issues/$1"
     branch: "feature/PROJ-$1"
+    originType: issue  # 可选: 指定原始 URL 类型 (pr/issue/branch/tag/repo/external)
   
   # 简化仓库名
   - from: "https://github.com/very-long-org-name/(.+)"
     to: "https://github.com/short/$1"
 ```
+
+`originType` 字段说明:
+- 如果原始 URL 是 GitHub 地址,会自动推断类型 (pr/issue/branch/tag/repo)
+- 如果原始 URL 是外部地址且未配置 `originType`,默认为 `external`
+- 该字段会记录在 `.ghlp-metadata.json` 中,用于追踪来源
 
 ## 目录结构
 
@@ -155,8 +164,9 @@ workspace/
 │   └── repo/
 │       ├── main/            # 主仓库 (git clone)
 │       ├── feature-branch/  # 分支 worktree
-│       ├── pr-123/          # PR worktree
-│       └── issue-456/       # Issue worktree
+│       ├── feature-xxx/     # PR worktree (使用 PR 分支名)
+│       ├── issue-456/       # Issue worktree
+│       └── tag-v1.0.0/      # Tag worktree
 └── another-org/
     └── another-repo/
         └── main/

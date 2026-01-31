@@ -1,11 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import type { OriginType } from './metadata.js';
 
 export interface UrlMapping {
-  from: string;      // 正则表达式
-  to: string;        // 目标 URL 模板，支持 $1, $2 等
-  branch?: string;   // 可选：自定义分支名模板
+  from: string;           // 正则表达式
+  to: string;             // 目标 URL 模板，支持 $1, $2 等
+  branch?: string;        // 可选：自定义分支名模板
+  originType?: OriginType; // 可选：指定原始 URL 的类型，默认 'external'
 }
 
 // Workspace config (stored in {workspace}/.ghlp/config.yaml)
@@ -41,6 +43,7 @@ export function loadWorkspaceConfig(workspace: string): WorkspaceConfig {
 export interface MappingResult {
   url: string;
   branch?: string;
+  originType?: OriginType;
 }
 
 export function applyMappings(url: string, mappings: UrlMapping[] | undefined): MappingResult {
@@ -75,6 +78,7 @@ export function applyMappings(url: string, mappings: UrlMapping[] | undefined): 
         return {
           url: targetUrl,
           branch: targetBranch,
+          originType: mapping.originType || 'external',
         };
       }
     } catch (err) {
