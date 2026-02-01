@@ -98,6 +98,22 @@ export function createUrlHandler(): Command {
       fs.renameSync(tempMainDir, actualMainDir);
       mainRepoDir = actualMainDir;
       console.log(chalk.green('  ✓ Repository cloned'));
+      
+      // Write metadata for newly cloned repo
+      if (parsed.type === 'repo') {
+        detectAndRunInit(mainRepoDir);
+        writeMetadata(mainRepoDir, {
+          originalUrl: inputUrl,
+          originType,
+          mapped: isMapped,
+          mappedUrl: isMapped ? url : undefined,
+          type: 'repo',
+          org: parsed.org,
+          repo: parsed.repo,
+          branch: defaultBranch,
+          createdAt: new Date().toISOString(),
+        });
+      }
     } else {
       defaultBranch = getDefaultBranch(mainRepoDir);
       console.log(chalk.gray('  Fetching latest changes...'));
