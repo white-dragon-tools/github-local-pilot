@@ -2,9 +2,13 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execSync, exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import { rm } from 'node:fs/promises';
+
+const execAsync = promisify(exec);
 import { loadGlobalConfig } from '../utils/config.js';
-import { isMainRepo, remoteBranchExists } from '../utils/git-ops.js';
+import { isMainRepo } from '../utils/git-ops.js';
 
 interface WorktreeInfo {
   path: string;
@@ -52,16 +56,84 @@ function getWorktreeList(mainRepoDir: string): WorktreeInfo[] {
   }
 }
 
-function removeWorktree(mainRepoDir: string, wtPath: string): boolean {
+async function findAndKillProcessesInDir(dirPath: string): Promise<string[]> {
+  const killed: string[] = [];
+  if (process.platform !== 'win32') return killed;
+  
   try {
-    execSync(`git worktree remove "${wtPath}" --force`, {
-      cwd: mainRepoDir,
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    });
-    return true;
+    // Use wmic to find processes with executables in the directory
+    const { stdout } = await execAsync('wmic process get ProcessId,Name,ExecutablePath /format:csv', { shell: 'cmd.exe' });
+    const lines = stdout.split('\n').filter(line => line.toLowerCase().includes(dirPath.toLowerCase().replace(/\\/g, '\\\\')));
+    
+    for (const line of lines) {
+      const parts = line.split(',');
+      if (parts.length >= 3) {
+        const pid = parts[parts.length - 2];
+        const name = parts[parts.length - 3];
+        if (pid && /^\d+$/.test(pid.trim())) {
+          try {
+            await execAsync(`taskkill /F /PID ${pid.trim()}`, { shell: 'cmd.exe' });
+            killed.push(`${name} (PID: ${pid.trim()})`);
+          } catch {
+            // Process might have already exited
+          }
+        }
+      }
+    }
+    
+    if (killed.length > 0) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
   } catch {
-    return false;
+    // Ignore errors
+  }
+  
+  return killed;
+}
+
+async function removeDirectory(dirPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
+    return { success: true };
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('EBUSY')) {
+      // Find and kill processes using this directory
+      const killed = await findAndKillProcessesInDir(dirPath);
+      if (killed.length > 0) {
+        console.log(chalk.yellow(`    Killed processes: ${killed.join(', ')}`));
+      }
+      // Retry
+      try {
+        await rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
+        return { success: true };
+      } catch (e2) {
+        const error = e2 instanceof Error ? e2.message : String(e2);
+        return { success: false, error: `Still locked after killing processes. ${error}` };
+      }
+    }
+    const error = e instanceof Error ? e.message : String(e);
+    return { success: false, error };
+  }
+}
+
+async function removeWorktree(mainRepoDir: string, wtPath: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // First try git worktree remove
+    await execAsync(`git worktree remove "${wtPath}" --force`, { cwd: mainRepoDir });
+    return { success: true };
+  } catch {
+    // If git worktree remove fails, manually delete directory and prune
+    const dirResult = await removeDirectory(wtPath);
+    if (!dirResult.success) {
+      return dirResult;
+    }
+    try {
+      await execAsync('git worktree prune', { cwd: mainRepoDir });
+      return { success: true };
+    } catch (e) {
+      const error = e instanceof Error ? (e as Error & { stderr?: string }).stderr || e.message : String(e);
+      return { success: false, error: error.trim() };
+    }
   }
 }
 
@@ -69,10 +141,11 @@ export function createCleanCommand(): Command {
   const cmd = new Command('clean');
   cmd.description('Clean up worktrees without remote branches');
   cmd.option('-a, --all', 'Clean all repos in workspace');
+  cmd.option('-f, --force', 'Delete entire repo folder');
   cmd.option('--dry-run', 'Show what would be cleaned without actually cleaning');
   cmd.argument('[repo]', 'Repository path or org/repo format');
 
-  cmd.action(async (repo: string | undefined, options: { all?: boolean; dryRun?: boolean }) => {
+  cmd.action(async (repo: string | undefined, options: { all?: boolean; force?: boolean; dryRun?: boolean }) => {
     const config = loadGlobalConfig();
     if (!config) {
       console.log(chalk.red('Configuration not found. Run `ghlp init` first.'));
@@ -113,6 +186,25 @@ export function createCleanCommand(): Command {
         continue;
       }
 
+      console.log(chalk.cyan(`\n📂 ${repoPath}`));
+
+      // Force mode: delete entire repo folder
+      if (options.force) {
+        if (!options.dryRun) {
+          const result = await removeDirectory(repoPath);
+          if (result.success) {
+            console.log(chalk.green(`  ✓ Removed entire folder`));
+            totalCleaned++;
+          } else {
+            console.log(chalk.red(`  ✗ Failed to remove: ${result.error}`));
+          }
+        } else {
+          console.log(chalk.gray(`  → Would remove entire folder`));
+          totalCleaned++;
+        }
+        continue;
+      }
+
       // Find main repo
       const entries = fs.readdirSync(repoPath, { withFileTypes: true });
       let mainRepoDir: string | null = null;
@@ -132,49 +224,88 @@ export function createCleanCommand(): Command {
 
       console.log(chalk.cyan(`\n📂 ${repoPath}`));
 
+      // Get worktree list for reference
       const worktrees = getWorktreeList(mainRepoDir);
+
+      // Build list of directories to check
+      interface DirInfo {
+        name: string;
+        fullPath: string;
+        worktree?: WorktreeInfo;
+        isMain: boolean;
+      }
       
-      for (const wt of worktrees) {
-        if (wt.isMain) {
-          console.log(chalk.gray(`  [main] ${wt.path}`));
-          continue;
-        }
+      const dirs: DirInfo[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const fullPath = path.join(repoPath, entry.name);
+        const normalizedPath = path.normalize(fullPath).toLowerCase();
+        const isMain = isMainRepo(fullPath);
+        const worktree = worktrees.find(wt => path.normalize(wt.path).toLowerCase() === normalizedPath);
+        dirs.push({ name: entry.name, fullPath, worktree, isMain });
+      }
 
-        if (wt.branch === 'HEAD (detached)') {
-          // Detached HEAD - check if directory name matches a pattern
-          console.log(chalk.yellow(`  [detached] ${wt.path}`));
-          if (!options.dryRun) {
-            if (removeWorktree(mainRepoDir, wt.path)) {
-              console.log(chalk.green(`    ✓ Removed`));
-              totalCleaned++;
-            } else {
-              console.log(chalk.red(`    ✗ Failed to remove`));
-            }
-          } else {
-            console.log(chalk.gray(`    → Would remove`));
-            totalCleaned++;
-          }
-          continue;
+      // Check remote branches in parallel
+      const mainRepoDirFinal = mainRepoDir;
+      const checkResults = await Promise.all(dirs.map(async (dir) => {
+        if (dir.isMain) {
+          return { dir, status: 'main' as const, hasRemote: true };
         }
+        if (!dir.worktree) {
+          return { dir, status: 'orphan' as const, hasRemote: false };
+        }
+        if (dir.worktree.branch === 'HEAD (detached)') {
+          return { dir, status: 'detached' as const, hasRemote: false };
+        }
+        // Check remote in parallel
+        const hasRemote = await new Promise<boolean>((resolve) => {
+          exec(`git ls-remote --heads origin "${dir.worktree!.branch}"`, { cwd: mainRepoDirFinal }, (err, stdout) => {
+            resolve(!err && stdout.trim().length > 0);
+          });
+        });
+        return { dir, status: hasRemote ? 'remote' as const : 'local' as const, hasRemote };
+      }));
 
-        // Check if branch exists on remote
-        const hasRemote = remoteBranchExists(mainRepoDir, wt.branch);
+      // Process results and delete in parallel
+      const toDelete: { dir: DirInfo; status: string }[] = [];
+      for (const { dir, status, hasRemote } of checkResults) {
+        if (status === 'main') {
+          console.log(chalk.gray(`  [main] ${dir.fullPath}`));
+        } else if (status === 'remote') {
+          console.log(chalk.gray(`  [remote] ${dir.worktree!.branch} → ${dir.name}`));
+        } else if (status === 'local') {
+          console.log(chalk.yellow(`  [local only] ${dir.worktree!.branch} → ${dir.name}`));
+          toDelete.push({ dir, status });
+        } else if (status === 'detached') {
+          console.log(chalk.yellow(`  [detached] ${dir.fullPath}`));
+          toDelete.push({ dir, status });
+        } else if (status === 'orphan') {
+          console.log(chalk.yellow(`  [orphan] ${dir.name}`));
+          toDelete.push({ dir, status });
+        }
+      }
+
+      // Delete in parallel
+      if (!options.dryRun && toDelete.length > 0) {
+        const deleteResults = await Promise.all(toDelete.map(async ({ dir, status }) => {
+          const result = status === 'orphan' 
+            ? await removeDirectory(dir.fullPath)
+            : await removeWorktree(mainRepoDirFinal, dir.fullPath);
+          return { dir, result };
+        }));
         
-        if (hasRemote) {
-          console.log(chalk.gray(`  [remote] ${wt.branch} → ${path.basename(wt.path)}`));
-        } else {
-          console.log(chalk.yellow(`  [local only] ${wt.branch} → ${path.basename(wt.path)}`));
-          if (!options.dryRun) {
-            if (removeWorktree(mainRepoDir, wt.path)) {
-              console.log(chalk.green(`    ✓ Removed`));
-              totalCleaned++;
-            } else {
-              console.log(chalk.red(`    ✗ Failed to remove`));
-            }
-          } else {
-            console.log(chalk.gray(`    → Would remove`));
+        for (const { dir, result } of deleteResults) {
+          if (result.success) {
+            console.log(chalk.green(`    ✓ Removed ${dir.name}`));
             totalCleaned++;
+          } else {
+            console.log(chalk.red(`    ✗ Failed to remove ${dir.name}: ${result.error}`));
           }
+        }
+      } else if (options.dryRun) {
+        totalCleaned += toDelete.length;
+        for (const { dir } of toDelete) {
+          console.log(chalk.gray(`    → Would remove ${dir.name}`));
         }
       }
     }
