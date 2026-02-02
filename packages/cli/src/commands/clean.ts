@@ -2,11 +2,13 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { execSync, exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { rm } from 'node:fs/promises';
 
 const execAsync = promisify(exec);
+const isWindows = os.platform() === 'win32';
 import { loadGlobalConfig } from '../utils/config.js';
 import { isMainRepo } from '../utils/git-ops.js';
 
@@ -91,29 +93,62 @@ async function findAndKillProcessesInDir(dirPath: string): Promise<string[]> {
   return killed;
 }
 
-async function removeDirectory(dirPath: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    await rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
-    return { success: true };
-  } catch (e) {
-    if (e instanceof Error && e.message.includes('EBUSY')) {
-      // Find and kill processes using this directory
-      const killed = await findAndKillProcessesInDir(dirPath);
-      if (killed.length > 0) {
-        console.log(chalk.yellow(`    Killed processes: ${killed.join(', ')}`));
-      }
-      // Retry
-      try {
-        await rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
-        return { success: true };
-      } catch (e2) {
-        const error = e2 instanceof Error ? e2.message : String(e2);
-        return { success: false, error: `Still locked after killing processes. ${error}` };
-      }
+function forceRemoveDirectorySync(dirPath: string): boolean {
+  if (!fs.existsSync(dirPath)) return true;
+
+  if (isWindows) {
+    try {
+      execSync(`rmdir /s /q "${dirPath}"`, { stdio: 'pipe', timeout: 10000 });
+      return true;
+    } catch {
+      // Fallback to Node.js
     }
-    const error = e instanceof Error ? e.message : String(e);
-    return { success: false, error };
+  } else {
+    try {
+      execSync(`rm -rf "${dirPath}"`, { stdio: 'pipe', timeout: 10000 });
+      return true;
+    } catch {
+      // Fallback to Node.js
+    }
   }
+
+  try {
+    fs.rmSync(dirPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeDirectory(dirPath: string): Promise<{ success: boolean; error?: string }> {
+  // Try fast native command first
+  if (forceRemoveDirectorySync(dirPath)) {
+    return { success: true };
+  }
+
+  // If still exists, try killing processes and retry
+  if (fs.existsSync(dirPath)) {
+    const killed = await findAndKillProcessesInDir(dirPath);
+    if (killed.length > 0) {
+      console.log(chalk.yellow(`    Killed processes: ${killed.join(', ')}`));
+    }
+    
+    // Retry with native command
+    if (forceRemoveDirectorySync(dirPath)) {
+      return { success: true };
+    }
+
+    // Final fallback
+    try {
+      await rm(dirPath, { recursive: true, force: true, maxRetries: 3 });
+      return { success: true };
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      return { success: false, error: `Still locked after killing processes. ${error}` };
+    }
+  }
+
+  return { success: true };
 }
 
 async function removeWorktree(mainRepoDir: string, wtPath: string): Promise<{ success: boolean; error?: string }> {
