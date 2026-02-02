@@ -85,6 +85,12 @@ ghlp open https://github.com/org/repo/issues/456
 ghlp open ghlp://github.com/org/repo/issues/456
 ```
 
+### 获取工作区路径
+
+```bash
+ghlp -w
+```
+
 ### 清理 Worktree
 
 ```bash
