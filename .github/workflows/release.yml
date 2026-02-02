@@ -39,19 +39,6 @@ jobs:
       - name: Test CLI
         run: pnpm --filter @white-dragon-tools/github-local-pilot test
 
-      - name: Update CLI version from tag
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          cd packages/cli
-          npm version $VERSION --no-git-tag-version --allow-same-version
-
-      - name: Publish CLI to npm
-        run: |
-          cd packages/cli
-          npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Package Chrome Extension
         run: |
           cd packages/chrome-extension
