@@ -98,8 +98,13 @@ function registerMacOS(): void {
   }
 
   // Compile AppleScript into a real .app bundle so it can receive Apple Events
+  // Writes a temp shell script and opens it in Terminal for real-time progress
+  const runnerScript = path.join(os.homedir(), '.github-local-pilot', 'run.sh');
   const script = `on open location theURL
-  do shell script "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH && \\"${exePath}\\" open " & quoted form of theURL & " > /dev/null 2>&1 &"
+  set runnerScript to "${runnerScript}"
+  set shellCmd to "#!/bin/bash" & linefeed & "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH" & linefeed & "echo -ne '\\\\033]0;ghlp-runner\\\\007'" & linefeed & "\\\"${exePath}\\\" open " & quoted form of theURL & linefeed & "osascript -e 'display notification \\\"Ready\\\" with title \\\"GitHub Local Pilot\\\"'" & linefeed & "sleep 1 && osascript -e 'tell application \\\"Terminal\\\"' -e 'repeat with w in windows' -e 'if name of w contains \\\"ghlp-runner\\\" then close w' -e 'end repeat' -e 'end tell' &" & linefeed & "exit"
+  do shell script "echo " & quoted form of shellCmd & " > " & quoted form of runnerScript & " && chmod +x " & quoted form of runnerScript
+  do shell script "open -a Terminal " & quoted form of runnerScript
 end open location`;
 
   const tmpScript = path.join(os.tmpdir(), 'ghlp-handler.applescript');

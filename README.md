@@ -53,6 +53,11 @@ ghlp register
 
 这会注册 `ghlp://` 协议,使浏览器能够调用 CLI。
 
+各平台实现方式:
+- **Windows**: 写入注册表 `HKCU\Software\Classes\ghlp`
+- **macOS**: 在 `~/Applications/` 创建 AppleScript applet,通过 Launch Services 注册 URL scheme。点击链接后会弹出 Terminal 窗口显示进度,完成后自动关闭并发送系统通知
+- **Linux**: 创建 `.desktop` 文件并通过 `xdg-mime` 注册
+
 ## 使用方法
 
 ### 初始化配置
@@ -61,7 +66,7 @@ ghlp register
 ghlp init
 ```
 
-按提示设置工作区目录,例如 `D:\workspace` 或 `~/workspace`。
+按提示设置工作区目录(默认 `~/workspace`),支持 `~` 展开,目录不存在时自动创建。
 
 ### 打开 GitHub URL
 
