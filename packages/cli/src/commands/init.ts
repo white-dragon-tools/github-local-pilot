@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { saveGlobalConfig, getConfigPath, type GlobalConfig } from '../utils/config.js';
 import { checkAllDependencies, checkGhAuth } from '../utils/dependencies.js';
 import { execSync } from 'node:child_process';
@@ -55,17 +57,28 @@ export function createInitCommand(): Command {
         type: 'input',
         name: 'workspace',
         message: 'Workspace directory:',
+        default: path.join(os.homedir(), 'workspace'),
+        filter: (input: string) => {
+          // Expand ~ to home directory
+          if (input.startsWith('~/') || input === '~') {
+            return path.join(os.homedir(), input.slice(1));
+          }
+          return input;
+        },
         validate: (input: string) => {
           if (!input.trim()) {
             return 'Workspace directory is required';
-          }
-          if (!fs.existsSync(input)) {
-            return `Directory does not exist: ${input}`;
           }
           return true;
         },
       },
     ]);
+
+    // Auto-create directory if it doesn't exist
+    if (!fs.existsSync(answers.workspace)) {
+      fs.mkdirSync(answers.workspace, { recursive: true });
+      console.log(chalk.green(`  Created directory: ${answers.workspace}`));
+    }
 
     const config: GlobalConfig = {
       workspace: answers.workspace,

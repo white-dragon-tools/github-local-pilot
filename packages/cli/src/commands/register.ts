@@ -33,14 +33,21 @@ export function createRegisterCommand(): Command {
 }
 
 function getExecutablePath(): string {
-  // Get the path to the ghlp executable
-  const npmGlobalBin = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
   const platform = os.platform();
+  const whichCmd = platform === 'win32' ? 'where ghlp' : 'which ghlp';
   
-  if (platform === 'win32') {
-    return path.join(npmGlobalBin, 'ghlp.cmd');
+  try {
+    const result = execSync(whichCmd, { encoding: 'utf-8' }).trim();
+    // `where` on Windows may return multiple lines, take the first
+    return result.split('\n')[0].trim();
+  } catch {
+    // Fallback: guess from npm prefix
+    const npmGlobalBin = execSync('npm config get prefix', { encoding: 'utf-8' }).trim();
+    if (platform === 'win32') {
+      return path.join(npmGlobalBin, 'ghlp.cmd');
+    }
+    return path.join(npmGlobalBin, 'bin', 'ghlp');
   }
-  return path.join(npmGlobalBin, 'bin', 'ghlp');
 }
 
 function registerWindows(): void {
@@ -82,9 +89,63 @@ function registerWindows(): void {
 }
 
 function registerMacOS(): void {
-  console.log(chalk.yellow('  macOS protocol registration requires app bundle.'));
-  console.log(chalk.gray('\n  For now, please use the CLI directly:'));
-  console.log(chalk.cyan('    ghlp open ghlp://org/repo/issues/123\n'));
+  const exePath = getExecutablePath();
+  const appDir = path.join(os.homedir(), 'Applications', 'GHLocalPilot.app');
+
+  // Remove old app bundle if exists
+  if (fs.existsSync(appDir)) {
+    fs.rmSync(appDir, { recursive: true, force: true });
+  }
+
+  // Compile AppleScript into a real .app bundle so it can receive Apple Events
+  const script = `on open location theURL
+  do shell script "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH && \\"${exePath}\\" open " & quoted form of theURL & " > /dev/null 2>&1 &"
+end open location`;
+
+  const tmpScript = path.join(os.tmpdir(), 'ghlp-handler.applescript');
+  fs.writeFileSync(tmpScript, script, 'utf-8');
+
+  console.log(chalk.yellow('  Compiling AppleScript app bundle...'));
+  try {
+    execSync(`osacompile -o "${appDir}" "${tmpScript}"`, { stdio: 'pipe' });
+  } catch (err: any) {
+    console.log(chalk.red(`  Failed to compile: ${err.message}`));
+    process.exit(1);
+  } finally {
+    fs.unlinkSync(tmpScript);
+  }
+
+  // Patch Info.plist to add URL scheme and bundle identifier
+  const plistPath = path.join(appDir, 'Contents', 'Info.plist');
+  let plist = fs.readFileSync(plistPath, 'utf-8');
+  const urlTypes = `\t<key>CFBundleIdentifier</key>
+\t<string>com.white-dragon-tools.github-local-pilot</string>
+\t<key>CFBundleURLTypes</key>
+\t<array>
+\t\t<dict>
+\t\t\t<key>CFBundleURLName</key>
+\t\t\t<string>GitHub Local Pilot Protocol</string>
+\t\t\t<key>CFBundleURLSchemes</key>
+\t\t\t<array>
+\t\t\t\t<string>ghlp</string>
+\t\t\t</array>
+\t\t</dict>
+\t</array>`;
+
+  // Insert before the final closing </dict></plist>
+  plist = plist.replace(/\n<\/dict>\s*<\/plist>/, '\n' + urlTypes + '\n</dict>\n</plist>');
+  fs.writeFileSync(plistPath, plist, 'utf-8');
+
+  // Register with Launch Services
+  try {
+    execSync(`/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -R -f "${appDir}"`, { stdio: 'pipe' });
+    console.log(chalk.green('✓ Protocol registered successfully!\n'));
+    console.log(`App bundle created at: ${appDir}`);
+    console.log('You can now click ghlp:// links in your browser.');
+  } catch {
+    console.log(chalk.yellow('\n  App bundle created but registration may need manual step:'));
+    console.log(chalk.cyan(`  open "${appDir}"\n`));
+  }
 }
 
 function registerLinux(): void {
