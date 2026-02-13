@@ -116,6 +116,27 @@ export function createUrlHandler(): Command {
       }
     } else {
       defaultBranch = getDefaultBranch(mainRepoDir);
+
+      // Migrate old directory naming (e.g., "main" → "main-repo")
+      const expectedMainDir = path.join(repoBaseDir, `${defaultBranch}-${parsed.repo}`);
+      if (mainRepoDir !== expectedMainDir && !fs.existsSync(expectedMainDir)) {
+        // Update .git files in sibling worktrees to point to new main repo path
+        const entries = fs.readdirSync(repoBaseDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const gitFilePath = path.join(repoBaseDir, entry.name, '.git');
+          if (fs.existsSync(gitFilePath) && fs.statSync(gitFilePath).isFile()) {
+            const content = fs.readFileSync(gitFilePath, 'utf-8');
+            if (content.includes(mainRepoDir)) {
+              fs.writeFileSync(gitFilePath, content.replaceAll(mainRepoDir, expectedMainDir));
+            }
+          }
+        }
+        fs.renameSync(mainRepoDir, expectedMainDir);
+        mainRepoDir = expectedMainDir;
+        console.log(chalk.gray(`  Migrated: ${path.basename(expectedMainDir)}`));
+      }
+
       console.log(chalk.gray('  Fetching latest changes...'));
       fetchRepo(mainRepoDir);
     }
