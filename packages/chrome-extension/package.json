@@ -1,6 +1,6 @@
 {
   "name": "@white-dragon-tools/github-local-pilot-extension",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "GitHub Local Pilot Chrome Extension",
   "private": true,
   "scripts": {

@@ -94,7 +94,7 @@ export function createUrlHandler(): Command {
       }
       // Get default branch and rename directory
       defaultBranch = getDefaultBranch(tempMainDir);
-      const actualMainDir = path.join(repoBaseDir, defaultBranch);
+      const actualMainDir = path.join(repoBaseDir, `${defaultBranch}-${parsed.repo}`);
       fs.renameSync(tempMainDir, actualMainDir);
       mainRepoDir = actualMainDir;
       console.log(chalk.green('  ✓ Repository cloned'));

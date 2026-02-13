@@ -8,7 +8,7 @@
 - **列表快捷入口**: 在 Issue/PR/Branch/Tag 列表页面,每行显示快捷图标,直接打开对应项目
 - **Create PR 快捷入口**: 在 Issue 评论中的 "Create PR" 链接后显示图标,快速打开对应分支
 - **Git Worktree 管理**: 每个 Issue/PR/Branch/Tag 独立目录,互不干扰
-- **智能目录命名**: PR 使用分支名称作为目录名,Tag 使用 `tag-{name}` 格式
+- **智能目录命名**: 目录名以 `-{repoName}` 为后缀,便于区分不同项目; PR 使用分支名,Tag 使用 `tag-{name}` 格式
 - **自动初始化**: 检测项目类型,自动运行 `pnpm i` / `npm i` / `cargo build` 等
 - **URL 映射**: 支持正则表达式重写 URL,适配内部工具链
 - **跨平台**: 支持 Windows / macOS / Linux
@@ -170,17 +170,17 @@ mappings:
 ```
 workspace/
 ├── .ghlp/
-│   └── config.yaml          # 工作区配置
+│   └── config.yaml                # 工作区配置
 ├── org/
 │   └── repo/
-│       ├── main/            # 主仓库 (git clone)
-│       ├── feature-branch/  # 分支 worktree
-│       ├── feature-xxx/     # PR worktree (使用 PR 分支名)
-│       ├── issue-456/       # Issue worktree
-│       └── tag-v1.0.0/      # Tag worktree
+│       ├── main-repo/             # 主仓库 (git clone)
+│       ├── feature-branch-repo/   # 分支 worktree
+│       ├── feature-xxx-repo/      # PR worktree (使用 PR 分支名)
+│       ├── issue-456-repo/        # Issue worktree
+│       └── tag-v1.0.0-repo/       # Tag worktree
 └── another-org/
     └── another-repo/
-        └── main/
+        └── main-another-repo/
 ```
 
 每个 worktree 目录下会生成 `.ghlp-metadata.json` 记录来源信息, 需要添加到 .gitignore.

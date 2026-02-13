@@ -135,21 +135,21 @@ describe('getTargetDirectory', () => {
 
   it('should generate directory for repo', () => {
     const parsed: ParsedUrl = { org: 'iamthekk', repo: 'test-repo', type: 'repo' };
-    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/main');
+    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/main-test-repo');
   });
 
   it('should generate directory for branch', () => {
     const parsed: ParsedUrl = { org: 'iamthekk', repo: 'test-repo', type: 'branch', identifier: 'feature/login' };
-    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/feature-login');
+    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/feature-login-test-repo');
   });
 
   it('should generate directory for PR', () => {
     const parsed: ParsedUrl = { org: 'iamthekk', repo: 'test-repo', type: 'pr', identifier: '123' };
-    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/pr-123');
+    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/pr-123-test-repo');
   });
 
   it('should generate directory for Issue', () => {
     const parsed: ParsedUrl = { org: 'iamthekk', repo: 'test-repo', type: 'issue', identifier: '456' };
-    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/issue-456');
+    expect(getTargetDirectory(workspace, parsed)).toBe('D:/workspace/iamthekk/test-repo/issue-456-test-repo');
   });
 });

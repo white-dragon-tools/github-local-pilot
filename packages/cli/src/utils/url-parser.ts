@@ -82,31 +82,32 @@ export function getTargetDirectory(
   defaultBranch?: string
 ): string {
   const base = `${workspace}/${parsed.org}/${parsed.repo}`;
+  const suffix = `-${parsed.repo}`;
 
   switch (parsed.type) {
     case 'repo':
-      return `${base}/${defaultBranch || 'main'}`;
+      return `${base}/${defaultBranch || 'main'}${suffix}`;
     case 'branch':
       // Replace slashes in branch name with dashes for directory name
       const safeBranchName = parsed.identifier!.replace(/\//g, '-');
-      return `${base}/${safeBranchName}`;
+      return `${base}/${safeBranchName}${suffix}`;
     case 'pr':
       // Use custom branch (PR branch name) for directory name if provided
       if (customBranch) {
         const safeName = customBranch.replace(/\//g, '-');
-        return `${base}/${safeName}`;
+        return `${base}/${safeName}${suffix}`;
       }
-      return `${base}/pr-${parsed.identifier}`;
+      return `${base}/pr-${parsed.identifier}${suffix}`;
     case 'issue':
       // Use custom branch for directory name if provided
       if (customBranch) {
         const safeName = customBranch.replace(/\//g, '-');
-        return `${base}/${safeName}`;
+        return `${base}/${safeName}${suffix}`;
       }
-      return `${base}/issue-${parsed.identifier}`;
+      return `${base}/issue-${parsed.identifier}${suffix}`;
     case 'tag':
       // Tag directory: tag-{name}
       const safeTagName = parsed.identifier!.replace(/\//g, '-');
-      return `${base}/tag-${safeTagName}`;
+      return `${base}/tag-${safeTagName}${suffix}`;
   }
 }

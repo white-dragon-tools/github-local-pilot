@@ -102,19 +102,19 @@ describe('Integration Tests', () => {
       const testCases = [
         {
           url: `ghlp://github.com/${TEST_REPO_ORG}/${TEST_REPO_NAME}`,
-          expectedSuffix: 'main',
+          expectedSuffix: `main-${TEST_REPO_NAME}`,
         },
         {
           url: `https://github.com/${TEST_REPO_ORG}/${TEST_REPO_NAME}/tree/feature/login`,
-          expectedSuffix: 'feature-login',
+          expectedSuffix: `feature-login-${TEST_REPO_NAME}`,
         },
         {
           url: `ghlp://github.com/${TEST_REPO_ORG}/${TEST_REPO_NAME}/pull/2`,
-          expectedSuffix: 'pr-2',
+          expectedSuffix: `pr-2-${TEST_REPO_NAME}`,
         },
         {
           url: `https://github.com/${TEST_REPO_ORG}/${TEST_REPO_NAME}/issues/1`,
-          expectedSuffix: 'issue-1',
+          expectedSuffix: `issue-1-${TEST_REPO_NAME}`,
         },
       ];
 
