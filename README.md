@@ -55,7 +55,7 @@ ghlp register
 
 各平台实现方式:
 - **Windows**: 写入注册表 `HKCU\Software\Classes\ghlp`
-- **macOS**: 在 `~/Applications/` 创建 AppleScript applet,通过 Launch Services 注册 URL scheme。点击链接后会弹出 Terminal 窗口显示进度,完成后自动关闭并发送系统通知
+- **macOS**: 在 `~/Applications/` 创建 AppleScript applet,通过 Launch Services 注册 URL scheme。点击链接后自动在配置的终端中打开,显示 clone 进度并 cd 到目标目录
 - **Linux**: 创建 `.desktop` 文件并通过 `xdg-mime` 注册
 
 ## 使用方法
@@ -70,25 +70,35 @@ ghlp init
 
 ### 打开 GitHub URL
 
+`ghlp open` 执行 git 操作后,将目标目录路径输出到 stdout(进度信息输出到 stderr)。
+可配合脚本使用:
+
 ```bash
-# 打开仓库
+# 直接使用 (快捷方式,自动转为 ghlp open)
+ghlp https://github.com/org/repo
+ghlp https://github.com/org/repo/tree/feature-branch
+
+# 等价的完整写法
 ghlp open https://github.com/org/repo
 
-# 打开分支
-ghlp open https://github.com/org/repo/tree/feature-branch
+# 配合 cd 使用
+cd "$(ghlp https://github.com/org/repo/tree/feature-branch)"
 
 # 打开 PR
-ghlp open https://github.com/org/repo/pull/123
+ghlp https://github.com/org/repo/pull/123
 
 # 打开 Issue (创建新分支)
-ghlp open https://github.com/org/repo/issues/456
+ghlp https://github.com/org/repo/issues/456
 ```
 
 也可以直接使用 `ghlp://` 协议:
 
 ```bash
-ghlp open ghlp://github.com/org/repo/issues/456
+ghlp ghlp://github.com/org/repo/issues/456
 ```
+
+**协议处理器自动终端**: 通过浏览器点击 `ghlp://` 链接时,如果配置了 `terminal`,
+会自动在终端中执行,显示 clone 进度,完成后 cd 到目标目录并打开 IDE。
 
 ### 获取工作区路径
 
@@ -133,6 +143,14 @@ autoOpenIde: code
 # 模板模式: 使用 {dir} 占位符自定义命令格式
 # autoOpenIde: "myide.exe /d \"{dir}\""
 # autoOpenIde: "idea --open {dir}"
+
+# 终端程序 (协议处理器通过此配置打开终端显示进度)
+# 简单模式: 命令后自动追加脚本路径
+# terminal: "open -a Terminal"
+# terminal: "wezterm cli spawn -- bash"
+#
+# 模板模式: 使用 {dir} 占位符,脚本路径替换 {dir}
+# terminal: "/path/to/open-terminal.sh {dir}"
 
 # URL 映射规则
 mappings:
