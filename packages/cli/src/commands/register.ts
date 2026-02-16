@@ -125,6 +125,8 @@ end open location`;
   let plist = fs.readFileSync(plistPath, "utf-8");
   const urlTypes = `\t<key>CFBundleIdentifier</key>
 \t<string>com.white-dragon-tools.github-local-pilot</string>
+\t<key>LSBackgroundOnly</key>
+\t<true/>
 \t<key>CFBundleURLTypes</key>
 \t<array>
 \t\t<dict>

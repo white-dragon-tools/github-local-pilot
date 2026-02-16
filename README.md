@@ -55,7 +55,7 @@ ghlp register
 
 各平台实现方式:
 - **Windows**: 写入注册表 `HKCU\Software\Classes\ghlp`
-- **macOS**: 在 `~/Applications/` 创建 AppleScript applet,通过 Launch Services 注册 URL scheme。点击链接后自动在配置的终端中打开,显示 clone 进度并 cd 到目标目录
+- **macOS**: 在 `~/Applications/` 创建后台 AppleScript applet (`LSBackgroundOnly`),通过 Launch Services 注册 URL scheme。点击链接时不会抢占焦点,自动在配置的终端中打开,显示 clone 进度并 cd 到目标目录
 - **Linux**: 创建 `.desktop` 文件并通过 `xdg-mime` 注册
 
 ## 使用方法
@@ -98,7 +98,12 @@ ghlp ghlp://github.com/org/repo/issues/456
 ```
 
 **协议处理器自动终端**: 通过浏览器点击 `ghlp://` 链接时,如果配置了 `terminal`,
-会自动在终端中执行,显示 clone 进度,完成后 cd 到目标目录并打开 IDE。
+会通过永久 runner 脚本 (`~/.github-local-pilot/ghlp-runner.sh`) 在终端中执行,
+显示 clone 进度,完成后 cd 到目标目录并打开 IDE。
+
+**智能更新检测**: 目录已存在时不执行 `fetch --all`,而是通过本地缓存检测是否落后上游,
+有未提交变更或落后 commit 时给出警告。打开目录后自动在后台 fetch 当前分支,
+为下次打开提供准确的状态信息。
 
 ### 获取工作区路径
 
@@ -130,6 +135,8 @@ ghlp clean --all --dry-run
   "workspace": "D:\\workspace"
 }
 ```
+
+Runner 脚本: `~/.github-local-pilot/ghlp-runner.sh` (协议处理器使用,自动创建和更新)
 
 ### 工作区配置
 

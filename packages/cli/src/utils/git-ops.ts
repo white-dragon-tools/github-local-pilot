@@ -1,6 +1,6 @@
-import { execSync, exec } from 'node:child_process';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { execSync, exec } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 export interface GitResult {
   success: boolean;
@@ -11,9 +11,9 @@ export interface GitResult {
 function runCommand(cmd: string, cwd?: string): GitResult {
   try {
     const output = execSync(cmd, {
-      encoding: 'utf-8',
+      encoding: "utf-8",
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ["pipe", "pipe", "pipe"],
     });
     return { success: true, message: output.trim() };
   } catch (err: any) {
@@ -22,18 +22,18 @@ function runCommand(cmd: string, cwd?: string): GitResult {
 }
 
 export function isGitRepo(dir: string): boolean {
-  const gitPath = path.join(dir, '.git');
+  const gitPath = path.join(dir, ".git");
   return fs.existsSync(gitPath);
 }
 
 export function isMainRepo(dir: string): boolean {
-  const gitPath = path.join(dir, '.git');
+  const gitPath = path.join(dir, ".git");
   if (!fs.existsSync(gitPath)) return false;
   return fs.statSync(gitPath).isDirectory();
 }
 
 export function isWorktree(dir: string): boolean {
-  const gitPath = path.join(dir, '.git');
+  const gitPath = path.join(dir, ".git");
   if (!fs.existsSync(gitPath)) return false;
   return fs.statSync(gitPath).isFile();
 }
@@ -56,7 +56,7 @@ export function findMainRepo(baseDir: string): string | null {
 export function cloneRepo(
   org: string,
   repo: string,
-  targetDir: string
+  targetDir: string,
 ): GitResult {
   const repoUrl = `https://github.com/${org}/${repo}.git`;
   const parentDir = path.dirname(targetDir);
@@ -69,21 +69,40 @@ export function cloneRepo(
 }
 
 export function fetchRepo(repoDir: string): GitResult {
-  return runCommand('git fetch --all', repoDir);
+  return runCommand("git fetch --all", repoDir);
+}
+
+/** Non-blocking background fetch for current branch only */
+export function fetchInBackground(repoDir: string): void {
+  const child = exec("git fetch", { cwd: repoDir });
+  child.unref();
+}
+
+export function hasLocalChanges(repoDir: string): boolean {
+  const result = runCommand("git status --porcelain", repoDir);
+  return result.success && !!result.message;
+}
+
+export function behindUpstreamCount(repoDir: string): number {
+  const result = runCommand("git rev-list --count HEAD..@{upstream}", repoDir);
+  if (result.success && result.message) {
+    return parseInt(result.message, 10) || 0;
+  }
+  return 0;
 }
 
 export function getDefaultBranch(repoDir: string): string {
   // First, ensure origin/HEAD is set
-  runCommand('git remote set-head origin --auto', repoDir);
-  
+  runCommand("git remote set-head origin --auto", repoDir);
+
   const result = runCommand(
-    'git symbolic-ref refs/remotes/origin/HEAD --short',
-    repoDir
+    "git symbolic-ref refs/remotes/origin/HEAD --short",
+    repoDir,
   );
   if (result.success && result.message) {
-    return result.message.replace('origin/', '');
+    return result.message.replace("origin/", "");
   }
-  return 'main';
+  return "main";
 }
 
 export function createWorktree(
@@ -91,7 +110,7 @@ export function createWorktree(
   targetDir: string,
   branch: string,
   createBranch: boolean = false,
-  baseBranch?: string
+  baseBranch?: string,
 ): GitResult {
   const parentDir = path.dirname(targetDir);
   if (!fs.existsSync(parentDir)) {
@@ -99,12 +118,14 @@ export function createWorktree(
   }
 
   let cmd: string;
-  if (branch === 'HEAD') {
+  if (branch === "HEAD") {
     // Create detached worktree
     cmd = `git worktree add --detach "${targetDir}"`;
   } else if (createBranch) {
     // Create new branch based on origin/baseBranch or origin/main
-    const base = baseBranch ? `origin/${baseBranch}` : `origin/${getDefaultBranch(mainRepoDir)}`;
+    const base = baseBranch
+      ? `origin/${baseBranch}`
+      : `origin/${getDefaultBranch(mainRepoDir)}`;
     cmd = `git worktree add -b "${branch}" "${targetDir}" "${base}"`;
   } else {
     cmd = `git worktree add "${targetDir}" "${branch}"`;
@@ -120,9 +141,13 @@ export function checkoutPR(repoDir: string, prNumber: string): GitResult {
   return runCommand(`gh pr checkout ${prNumber}`, repoDir);
 }
 
-export function getPRBranchName(org: string, repo: string, prNumber: string): string | null {
+export function getPRBranchName(
+  org: string,
+  repo: string,
+  prNumber: string,
+): string | null {
   const result = runCommand(
-    `gh pr view ${prNumber} --repo ${org}/${repo} --json headRefName --jq .headRefName`
+    `gh pr view ${prNumber} --repo ${org}/${repo} --json headRefName --jq .headRefName`,
   );
   if (result.success && result.message) {
     return result.message.trim();
@@ -130,24 +155,18 @@ export function getPRBranchName(org: string, repo: string, prNumber: string): st
   return null;
 }
 
-export function remoteBranchExists(
-  repoDir: string,
-  branch: string
-): boolean {
+export function remoteBranchExists(repoDir: string, branch: string): boolean {
   const result = runCommand(
     `git ls-remote --heads origin "${branch}"`,
-    repoDir
+    repoDir,
   );
   return result.success && !!result.message;
 }
 
-export function localBranchExists(
-  repoDir: string,
-  branch: string
-): boolean {
+export function localBranchExists(repoDir: string, branch: string): boolean {
   const result = runCommand(
     `git show-ref --verify --quiet "refs/heads/${branch}"`,
-    repoDir
+    repoDir,
   );
   return result.success;
 }
@@ -155,8 +174,8 @@ export function localBranchExists(
 export function openInIde(dir: string, ideCommand: string): void {
   try {
     let cmd: string;
-    if (ideCommand.includes('{dir}')) {
-      cmd = ideCommand.replace('{dir}', dir);
+    if (ideCommand.includes("{dir}")) {
+      cmd = ideCommand.replace("{dir}", dir);
     } else {
       cmd = `${ideCommand} "${dir}"`;
     }

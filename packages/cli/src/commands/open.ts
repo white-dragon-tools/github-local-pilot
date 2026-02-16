@@ -9,6 +9,7 @@ import { loadGlobalConfig } from "../utils/config.js";
 import {
   cloneRepo,
   fetchRepo,
+  fetchInBackground,
   findMainRepo,
   createWorktree,
   checkoutPR,
@@ -17,6 +18,8 @@ import {
   localBranchExists,
   getDefaultBranch,
   isGitRepo,
+  hasLocalChanges,
+  behindUpstreamCount,
 } from "../utils/git-ops.js";
 import { detectAndRunInit } from "../utils/auto-init.js";
 import {
@@ -33,11 +36,49 @@ function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
 
-function buildIdeCommand(autoOpenIde: string): string {
-  if (autoOpenIde.includes("{dir}")) {
-    return autoOpenIde.replace("{dir}", '"$TARGET_DIR"');
+const RUNNER_SCRIPT_LINES = [
+  "#!/bin/bash",
+  "# ghlp-runner: Execute ghlp open in a terminal context",
+  "# Usage: ghlp-runner.sh <url> <workspace> [auto-open-ide]",
+  "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH",
+  "export GHLP_IN_TERMINAL=1",
+  "",
+  'TARGET_DIR=$(ghlp open "$1" -w "$2")',
+  'if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then',
+  '  cd "$TARGET_DIR"',
+  '  if [ -n "$3" ]; then',
+  '    if [[ "$3" == *"{dir}"* ]]; then',
+  '      IDE_CMD="${3//\\{dir\\}/\\"$TARGET_DIR\\"}"',
+  "    else",
+  '      IDE_CMD="$3 \\"$TARGET_DIR\\""',
+  "    fi",
+  '    eval "$IDE_CMD"',
+  "  fi",
+  "fi",
+  "exec $SHELL",
+];
+
+function ensureRunnerScript(): string {
+  const scriptPath = path.join(
+    os.homedir(),
+    ".github-local-pilot",
+    "ghlp-runner.sh",
+  );
+  const content = RUNNER_SCRIPT_LINES.join("\n") + "\n";
+
+  const dir = path.dirname(scriptPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
-  return `${autoOpenIde} "$TARGET_DIR"`;
+
+  if (
+    !fs.existsSync(scriptPath) ||
+    fs.readFileSync(scriptPath, "utf-8") !== content
+  ) {
+    fs.writeFileSync(scriptPath, content, { mode: 0o755 });
+  }
+
+  return scriptPath;
 }
 
 function spawnInTerminal(
@@ -45,30 +86,22 @@ function spawnInTerminal(
   inputUrl: string,
   workspace: string,
 ): void {
-  const lines = [
-    "#!/bin/bash",
-    "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH",
-    "export GHLP_IN_TERMINAL=1",
-    `TARGET_DIR=$(ghlp open ${shellQuote(inputUrl)} -w ${shellQuote(workspace)})`,
-    'if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then',
-    '  cd "$TARGET_DIR"',
+  const runnerPath = ensureRunnerScript();
+
+  const terminalArgs = [
+    shellQuote(runnerPath),
+    shellQuote(inputUrl),
+    shellQuote(workspace),
   ];
   if (wsConfig.autoOpenIde) {
-    lines.push(`  ${buildIdeCommand(wsConfig.autoOpenIde)}`);
+    terminalArgs.push(shellQuote(wsConfig.autoOpenIde));
   }
-  lines.push("fi", 'rm -f "$0"', "exec $SHELL");
-
-  const scriptPath = path.join(
-    os.tmpdir(),
-    `ghlp-${process.pid}-${Date.now()}.sh`,
-  );
-  fs.writeFileSync(scriptPath, lines.join("\n") + "\n", { mode: 0o755 });
 
   let terminalCmd: string;
   if (wsConfig.terminal!.includes("{dir}")) {
-    terminalCmd = wsConfig.terminal!.replace("{dir}", shellQuote(scriptPath));
+    terminalCmd = wsConfig.terminal!.replace("{dir}", terminalArgs.join(" "));
   } else {
-    terminalCmd = `${wsConfig.terminal} ${shellQuote(scriptPath)}`;
+    terminalCmd = `${wsConfig.terminal} ${terminalArgs.join(" ")}`;
   }
 
   const child = spawn("bash", ["-c", terminalCmd], {
@@ -227,9 +260,6 @@ export function createUrlHandler(): Command {
         mainRepoDir = expectedMainDir;
         log(chalk.gray(`  Migrated: ${path.basename(expectedMainDir)}`));
       }
-
-      log(chalk.gray("  Fetching latest changes..."));
-      fetchRepo(mainRepoDir);
     }
 
     const targetDir = getTargetDirectory(
@@ -241,10 +271,27 @@ export function createUrlHandler(): Command {
 
     // Check if target already exists
     if (fs.existsSync(targetDir) && isGitRepo(targetDir)) {
-      log(chalk.green(`✓ Directory already exists: ${targetDir}`));
+      const behind = behindUpstreamCount(targetDir);
+      if (behind > 0) {
+        log(
+          chalk.yellow(
+            `  ⚠ ${behind} commit(s) behind upstream, run 'git pull' to update`,
+          ),
+        );
+      }
+      if (hasLocalChanges(targetDir)) {
+        log(chalk.yellow("  ⚠ Local uncommitted changes detected"));
+      }
+      log(chalk.green(`✓ Ready: ${targetDir}`));
       console.log(targetDir);
+      // Background fetch for next time
+      fetchInBackground(targetDir);
       return;
     }
+
+    // Fetch before creating new worktree
+    log(chalk.gray("  Fetching latest changes..."));
+    fetchRepo(mainRepoDir);
 
     // Handle based on type
     let finalDir: string | undefined;
@@ -321,8 +368,20 @@ export function createUrlHandler(): Command {
 
         // Check if target already exists (with new path)
         if (fs.existsSync(prTargetDir) && isGitRepo(prTargetDir)) {
-          log(chalk.green(`✓ Directory already exists: ${prTargetDir}`));
+          const behind = behindUpstreamCount(prTargetDir);
+          if (behind > 0) {
+            log(
+              chalk.yellow(
+                `  ⚠ ${behind} commit(s) behind upstream, run 'git pull' to update`,
+              ),
+            );
+          }
+          if (hasLocalChanges(prTargetDir)) {
+            log(chalk.yellow("  ⚠ Local uncommitted changes detected"));
+          }
+          log(chalk.green(`✓ Ready: ${prTargetDir}`));
           console.log(prTargetDir);
+          fetchInBackground(prTargetDir);
           return;
         }
 
